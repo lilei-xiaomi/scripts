@@ -201,11 +201,23 @@ for model in "${MODELS[@]}"; do
     MODEL_OUTPUT=$(cat "$MODEL_TMPFILE")
     rm -f "$MODEL_TMPFILE"
 
-    # Extract "View at: https://..." leaderboard URL from model run output
+    # Extract score, submission ID, and leaderboard URL from model run output
+    MODEL_SCORE=$(echo "$MODEL_OUTPUT" | grep -oP "Final score: \K[\d.]+/[\d.]+ \([\d.]+%\)" | head -1 || true)
+    MODEL_SUBMISSION=$(echo "$MODEL_OUTPUT" | grep -i "Submission ID" | grep -oE '[a-f0-9-]{36}' | head -1 || true)
     MODEL_URL=$(echo "$MODEL_OUTPUT" | grep -i "View at" | grep -oE 'https?://[^ ]+' | head -1 || true)
-    if [ -n "$MODEL_URL" ]; then
-        RESULT_URLS+=("$model: $MODEL_URL")
+    
+    # Build result entry with score and URL
+    RESULT_ENTRY="$model"
+    if [ -n "$MODEL_SCORE" ]; then
+        RESULT_ENTRY="$RESULT_ENTRY: $MODEL_SCORE"
     fi
+    if [ -n "$MODEL_URL" ]; then
+        RESULT_ENTRY="$RESULT_ENTRY — $MODEL_URL"
+    fi
+    if [ -n "$MODEL_SUBMISSION" ]; then
+        RESULT_ENTRY="$RESULT_ENTRY (submission: $MODEL_SUBMISSION)"
+    fi
+    RESULT_URLS+=("$RESULT_ENTRY")
 
     if [ "$MODEL_EXIT" -eq 0 ]; then
         echo "✓ $model complete at $(date -u)"
