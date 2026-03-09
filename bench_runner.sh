@@ -30,6 +30,10 @@ set +o allexport
 # Ensure tool paths are present regardless of how systemd invoked this script
 export PATH="/root/.local/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:$PATH"
 
+# Ensure HOME is set — systemd may not set it, but the Vultr CLI needs it to
+# locate its config directory ($XDG_CONFIG_HOME falls back to $HOME/.config).
+export HOME="${HOME:-/root}"
+
 # Now enable strict mode (unbound variables are safe after sourcing profiles)
 set -uo pipefail
 
@@ -125,6 +129,20 @@ for m in "${MODELS[@]}"; do
     echo "  - $m"
 done
 
+# ── Read optional official key ──
+OFFICIAL_KEY_FILE="/root/benchmark_official_key.txt"
+OFFICIAL_KEY_ARG=()
+if [ -s "$OFFICIAL_KEY_FILE" ]; then
+    OFFICIAL_KEY=$(cat "$OFFICIAL_KEY_FILE")
+    OFFICIAL_KEY_ARG=(--official-key "$OFFICIAL_KEY")
+    echo "Official key loaded from $OFFICIAL_KEY_FILE"
+elif [ -n "${PINCHBENCH_OFFICIAL_KEY:-}" ]; then
+    OFFICIAL_KEY_ARG=(--official-key "$PINCHBENCH_OFFICIAL_KEY")
+    echo "Official key loaded from PINCHBENCH_OFFICIAL_KEY env var"
+else
+    echo "No official key found — submissions will be unofficial"
+fi
+
 # ── Pull latest benchmark code ──
 echo ""
 echo "=== Updating benchmark code ==="
@@ -138,7 +156,7 @@ echo "=== Running registration ==="
 # and available for URL extraction. Command substitution $(...) runs in a subshell
 # that doesn't inherit the exec redirect, so tee /dev/stderr wouldn't reach the log.
 REG_TMPFILE=$(mktemp)
-uv run benchmark.py --register 2>&1 | tee "$REG_TMPFILE"
+    uv run benchmark.py --register "${OFFICIAL_KEY_ARG[@]}" 2>&1 | tee "$REG_TMPFILE"
 REGISTER_EXIT=${PIPESTATUS[0]}
 REGISTRATION_OUTPUT=$(cat "$REG_TMPFILE")
 rm -f "$REG_TMPFILE"
@@ -152,6 +170,12 @@ Check: \`ssh root@$(curl -sf $METADATA/v1/interfaces/0/ipv4/address || echo unkn
     exit 1
 fi
 echo "✓ Registration complete"
+
+# Unset any pre-baked PINCHBENCH_TOKEN from the snapshot environment so that
+# benchmark runs use the freshly registered token saved to the config file.
+# lib_upload._resolve_token checks the env var before the config file, so
+# a stale snapshot token would otherwise shadow the new one and cause 401s.
+unset PINCHBENCH_TOKEN
 
 # Extract claim URL ("Claim URL: https://...") from registration output
 CLAIM_URL=$(echo "$REGISTRATION_OUTPUT" | grep -i "Claim URL" | grep -oE 'https?://[^ ]+' | head -1 || true)
@@ -172,7 +196,7 @@ for model in "${MODELS[@]}"; do
     echo "Started at: $(date -u)"
 
     MODEL_TMPFILE=$(mktemp)
-    uv run benchmark.py --model "$model" 2>&1 | tee "$MODEL_TMPFILE"
+    uv run benchmark.py --model "$model" "${OFFICIAL_KEY_ARG[@]}" 2>&1 | tee "$MODEL_TMPFILE"
     MODEL_EXIT=${PIPESTATUS[0]}
     MODEL_OUTPUT=$(cat "$MODEL_TMPFILE")
     rm -f "$MODEL_TMPFILE"

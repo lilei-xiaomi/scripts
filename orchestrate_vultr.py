@@ -165,10 +165,13 @@ def wait_for_ssh(ip: str, timeout: int = 600) -> None:
     raise TimeoutError(f"SSH not available on {ip} after {timeout}s")
 
 
-def write_model_file(ip: str, models: list[str], key_path: str) -> None:
+def write_model_file(
+    ip: str, models: list[str], key_path: str, official_key: str | None = None
+) -> None:
     """
     SSH into the instance and write /root/benchmark_models.txt.
 
+    Optionally also writes /root/benchmark_official_key.txt when official_key is provided.
     This is a brief connection — we write one file and disconnect.
     The bench-runner.service is already running and waiting for this file.
     """
@@ -189,6 +192,18 @@ def write_model_file(ip: str, models: list[str], key_path: str) -> None:
         if exit_status != 0:
             err = stderr.read().decode().strip()
             raise RuntimeError(f"Failed to write model file on {ip}: {err}")
+
+        if official_key:
+            escaped_key = official_key.replace("'", "'\\''")
+            key_cmd = (
+                f"printf '%s' '{escaped_key}' > /root/benchmark_official_key.txt.tmp && "
+                f"mv /root/benchmark_official_key.txt.tmp /root/benchmark_official_key.txt"
+            )
+            _, stdout2, stderr2 = client.exec_command(key_cmd)
+            exit_status2 = stdout2.channel.recv_exit_status()
+            if exit_status2 != 0:
+                err2 = stderr2.read().decode().strip()
+                raise RuntimeError(f"Failed to write official key file on {ip}: {err2}")
     finally:
         client.close()
 
@@ -198,6 +213,7 @@ def launch_instance(
     models: list[str],
     key_path: str,
     config: VultrConfig,
+    official_key: str | None = None,
 ) -> tuple[str, str, str]:
     """
     Full lifecycle for one instance: create → wait for IP → wait for SSH → write model file.
@@ -214,7 +230,7 @@ def launch_instance(
     wait_for_ssh(ip)
     print(f"  [{label}] SSH ready — writing model assignment...")
 
-    write_model_file(ip, models, key_path)
+    write_model_file(ip, models, key_path, official_key=official_key)
     print(f"  [{label}] ✓ Models written. Instance is running headlessly.")
 
     return label, instance_id, ip
@@ -266,6 +282,13 @@ Examples:
     parser.add_argument("--plan", default="vc2-1c-2gb")
     parser.add_argument("--snapshot", default=DEFAULT_SNAPSHOT)
     parser.add_argument("--ssh-keys", default="a4b8f6d9-fa2e-48a4-b12d-b6162d065e52")
+    parser.add_argument(
+        "--official-key",
+        type=str,
+        default=os.environ.get("PINCHBENCH_OFFICIAL_KEY"),
+        metavar="KEY",
+        help="Official key to mark submissions as official (can also use PINCHBENCH_OFFICIAL_KEY env var)",
+    )
 
     args = parser.parse_args()
 
@@ -284,6 +307,7 @@ Examples:
     print(f"{'=' * 60}")
     print(f"Models:    {len(args.models)}")
     print(f"Instances: {args.count} ({len(non_empty)} with models assigned)")
+    print(f"Official:  {'yes' if args.official_key else 'no'}")
     print(f"Note: laptop must stay online ~90s while instances boot")
     print(f"{'=' * 60}\n")
 
@@ -292,7 +316,9 @@ Examples:
 
     with ThreadPoolExecutor(max_workers=args.workers) as executor:
         futures = {
-            executor.submit(launch_instance, f"bench-{i:02d}", bucket, args.key, config): (
+            executor.submit(
+                launch_instance, f"bench-{i:02d}", bucket, args.key, config, args.official_key
+            ): (
                 i,
                 bucket,
             )

@@ -2,8 +2,8 @@
 """
 Run benchmark commands in parallel across multiple servers using Fabric.
 
-python scripts/run_parallel_fabric.py --servers servers.json 
-The script supports --user, --port, --key, --password, --connect-timeout, 
+python scripts/run_parallel_fabric.py --servers servers.json
+The script supports --user, --port, --key, --password, --connect-timeout,
 --remote-dir, --command-template, and --workers.
 
 Input JSON format:
@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -54,11 +55,13 @@ def load_servers(path: Path) -> Sequence[ServerEntry]:
     return servers
 
 
-def build_command(command_template: str, model: str, remote_dir: str) -> str:
+def build_command(
+    command_template: str, model: str, remote_dir: str, official_key: str | None = None
+) -> str:
     rendered = command_template.format(model=model)
-    base_command = (
-        f"cd {remote_dir} && git pull && {rendered}"
-    )
+    if official_key:
+        rendered = f"{rendered} --official-key {json.dumps(official_key)}"
+    base_command = f"cd {remote_dir} && git pull && {rendered}"
     return f"/bin/bash -lc {json.dumps(base_command)}"
 
 
@@ -71,6 +74,7 @@ def run_on_server(
     connect_timeout: int | None,
     command_template: str,
     remote_dir: str,
+    official_key: str | None = None,
 ) -> tuple[str, bool, str]:
     connect_kwargs = {}
     if key_filename:
@@ -78,7 +82,7 @@ def run_on_server(
     if password:
         connect_kwargs["password"] = password
 
-    command = build_command(command_template, server.model, remote_dir)
+    command = build_command(command_template, server.model, remote_dir, official_key=official_key)
 
     try:
         conn = Connection(
@@ -145,6 +149,13 @@ def parse_args(argv: Iterable[str]) -> argparse.Namespace:
         default=8,
         help="Maximum number of concurrent workers",
     )
+    parser.add_argument(
+        "--official-key",
+        type=str,
+        default=os.environ.get("PINCHBENCH_OFFICIAL_KEY"),
+        metavar="KEY",
+        help="Official key to mark submissions as official (can also use PINCHBENCH_OFFICIAL_KEY env var)",
+    )
     return parser.parse_args(list(argv))
 
 
@@ -168,6 +179,7 @@ def main(argv: Iterable[str]) -> int:
                 args.connect_timeout,
                 args.command_template,
                 args.remote_dir,
+                args.official_key,
             )
             for server in servers
         ]
