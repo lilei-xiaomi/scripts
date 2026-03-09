@@ -1,8 +1,11 @@
 [Unit]
 Description=Autonomous Benchmark Runner
-# Wait for network and cloud-init before starting, so the metadata API is reachable
-# and /etc/environment (with VULTR_API_KEY) has been written.
-After=network-online.target cloud-init.target
+# Wait for network before starting so the metadata API is reachable.
+# cloud-init.target is intentionally omitted — it has After=multi-user.target
+# which creates an ordering cycle that causes systemd to silently drop this
+# service. The runner script retries the metadata fetch for up to 2 minutes,
+# which is sufficient to wait out any remaining cloud-init activity.
+After=network-online.target
 Wants=network-online.target
 
 [Service]

@@ -87,39 +87,57 @@ echo "✓ System packages installed"
 # ── Node.js 22 ──
 echo ""
 echo "--- Installing Node.js 22 ---"
-curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
-apt-get install -y -qq nodejs
-echo "✓ Node.js $(node --version) installed"
+if command -v node &>/dev/null; then
+    echo "✓ Node.js already installed: $(node --version)"
+else
+    curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+    apt-get install -y -qq nodejs
+    echo "✓ Node.js $(node --version) installed"
+fi
 
 # ── uv ──
 echo ""
 echo "--- Installing uv ---"
-curl -LsSf https://astral.sh/uv/install.sh | sh
-# Make available system-wide
-ln -sf /root/.local/bin/uv /usr/local/bin/uv
-echo "✓ uv $(uv --version) installed"
+if command -v uv &>/dev/null; then
+    echo "✓ uv already installed: $(uv --version)"
+else
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    ln -sf /root/.local/bin/uv /usr/local/bin/uv
+    echo "✓ uv $(uv --version) installed"
+fi
 
 # ── Vultr CLI ──
 echo ""
 echo "--- Installing Vultr CLI ---"
-# Download latest vultr-cli for Linux amd64
-# Tag format is "v3.8.0"; asset filename uses the full tag: vultr-cli_v3.8.0_linux_amd64.tar.gz
-# Binary inside the archive is named "vultr-cli"; we install it as both "vultr-cli" and "vultr"
-# so both names work (orchestrate_vultr.py uses "vultr", bench_runner.sh uses "vultr")
-VULTR_CLI_VERSION=$(curl -sf "https://api.github.com/repos/vultr/vultr-cli/releases/latest" | jq -r '.tag_name')
-VULTR_CLI_URL="https://github.com/vultr/vultr-cli/releases/download/${VULTR_CLI_VERSION}/vultr-cli_${VULTR_CLI_VERSION}_linux_amd64.tar.gz"
-echo "  Downloading vultr-cli $VULTR_CLI_VERSION..."
-curl -sL "$VULTR_CLI_URL" | tar -xz -C /usr/local/bin vultr-cli
-chmod +x /usr/local/bin/vultr-cli
-# Symlink as "vultr" so existing scripts using either name work
-ln -sf /usr/local/bin/vultr-cli /usr/local/bin/vultr
-echo "✓ vultr-cli $(vultr-cli version) installed"
+if command -v vultr-cli &>/dev/null || command -v vultr &>/dev/null; then
+    # Ensure both names exist regardless of which was found
+    if command -v vultr-cli &>/dev/null && ! command -v vultr &>/dev/null; then
+        ln -sf "$(command -v vultr-cli)" /usr/local/bin/vultr
+    elif command -v vultr &>/dev/null && ! command -v vultr-cli &>/dev/null; then
+        ln -sf "$(command -v vultr)" /usr/local/bin/vultr-cli
+    fi
+    echo "✓ vultr-cli already installed: $(vultr-cli version 2>/dev/null || vultr version)"
+else
+    # Tag format is "v3.8.0"; asset filename includes the full tag: vultr-cli_v3.8.0_linux_amd64.tar.gz
+    # Binary inside the archive is named "vultr-cli"
+    VULTR_CLI_VERSION=$(curl -sf "https://api.github.com/repos/vultr/vultr-cli/releases/latest" | jq -r '.tag_name')
+    VULTR_CLI_URL="https://github.com/vultr/vultr-cli/releases/download/${VULTR_CLI_VERSION}/vultr-cli_${VULTR_CLI_VERSION}_linux_amd64.tar.gz"
+    echo "  Downloading vultr-cli $VULTR_CLI_VERSION..."
+    curl -sL "$VULTR_CLI_URL" | tar -xz -C /usr/local/bin vultr-cli
+    chmod +x /usr/local/bin/vultr-cli
+    ln -sf /usr/local/bin/vultr-cli /usr/local/bin/vultr
+    echo "✓ vultr-cli $(vultr-cli version) installed"
+fi
 
 # ── OpenClaw ──
 echo ""
 echo "--- Installing OpenClaw ---"
-npm install -g openclaw
-echo "✓ OpenClaw $(openclaw --version 2>/dev/null || echo installed)"
+if command -v openclaw &>/dev/null; then
+    echo "✓ OpenClaw already installed: $(openclaw --version 2>/dev/null || echo unknown version)"
+else
+    npm install -g openclaw
+    echo "✓ OpenClaw $(openclaw --version 2>/dev/null || echo installed)"
+fi
 
 # ── Clone benchmark repo ──
 echo ""
@@ -136,7 +154,7 @@ echo "✓ Repo at $SKILL_DIR"
 echo ""
 echo "--- Pre-installing Python dependencies ---"
 cd "$SKILL_DIR"
-uv sync --frozen
+uv sync
 echo "✓ Python dependencies installed"
 
 # ── Write credentials to /etc/environment ──

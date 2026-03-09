@@ -28,6 +28,16 @@ import subprocess
 import sys
 from dataclasses import dataclass
 
+# From previous snapshots 
+# bench-runner 2026-03-08 v1
+# 38bffed6-4d09-4cf4-840d-0e0180eb0d89
+# 
+# Full bootstrap
+# bench-runner 2026-03-08 v2
+# 3924b3f6-d99d-4c6f-8883-43d6d847ff6b
+
+DEFAULT_SNAPSHOT = "38bffed6-4d09-4cf4-840d-0e0180eb0d89"
+
 
 @dataclass(frozen=True)
 class VultrConfig:
@@ -35,7 +45,7 @@ class VultrConfig:
 
     region: str = "atl"
     plan: str = "vc2-1c-2gb"
-    snapshot: str = "bae41fbd-2fde-43e3-b310-8a1009d060df"
+    snapshot: str = DEFAULT_SNAPSHOT
     ssh_keys: str = "a4b8f6d9-fa2e-48a4-b12d-b6162d065e52"
 
 
@@ -152,7 +162,7 @@ Examples:
     )
     parser.add_argument(
         "--snapshot",
-        default="bae41fbd-2fde-43e3-b310-8a1009d060df",
+        default=DEFAULT_SNAPSHOT,
         help="Vultr snapshot ID",
     )
     parser.add_argument(

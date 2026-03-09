@@ -9,7 +9,7 @@
 # It should be placed at /root/run_benchmarks.sh on the snapshot image.
 # Use setup_snapshot.sh to install it.
 
-set -uo pipefail
+set -o pipefail
 
 LOG="/var/log/bench-runner.log"
 REMOTE_DIR="/root/skill"
@@ -17,6 +17,21 @@ METADATA="http://169.254.169.254"
 
 # Tee all output to log file
 exec > >(tee -a "$LOG") 2>&1
+
+# ── Load environment first, before strict mode ──
+# .bashrc references $PS1 which is unbound in non-interactive shells.
+# Source with -u disabled to avoid a fatal error, then enable strict mode.
+source /root/.profile 2>/dev/null || true
+source /root/.bashrc 2>/dev/null || true
+set -o allexport
+source /etc/environment 2>/dev/null || true
+set +o allexport
+
+# Ensure tool paths are present regardless of how systemd invoked this script
+export PATH="/root/.local/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:$PATH"
+
+# Now enable strict mode (unbound variables are safe after sourcing profiles)
+set -uo pipefail
 
 # ── Slack notification helper ──
 # Reads SLACK_WEBHOOK_URL from /etc/environment (set during snapshot setup).
@@ -34,17 +49,6 @@ slack_notify() {
 
 echo "=== Benchmark runner started at $(date -u) ==="
 echo "Hostname: $(hostname)"
-
-# ── Load environment (API keys, PATH additions for uv, etc.) ──
-# shellcheck source=/dev/null
-source /root/.profile 2>/dev/null || true
-# shellcheck source=/dev/null
-source /root/.bashrc 2>/dev/null || true
-# Load system-wide env (contains VULTR_API_KEY for self-destruct)
-set -o allexport
-# shellcheck source=/dev/null
-source /etc/environment 2>/dev/null || true
-set +o allexport
 
 # ── Verify required tools ──
 for tool in curl jq uv vultr; do
