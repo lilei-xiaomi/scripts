@@ -1,0 +1,4 @@
+[
+  { "host": "66.42.93.251", "model": "anthropic/claude-opus-4.6" },
+  { "host": "66.42.83.1", "model": "anthropic/claude-sonnet-4.5" }
+]
