@@ -6,7 +6,7 @@ Creates instances from a snapshot, waits for SSH, writes the model assignment
 to /root/benchmark_models.txt, then disconnects. The bench-runner.service picks
 up the file and runs benchmarks autonomously until done, then self-destructs.
 
-Your laptop needs to stay online for ~60-90s per batch while instances boot and
+Your laptop needs to stay online for ~5-10m per batch while instances boot and
 SSH becomes available. After the model file is written you can close your laptop.
 
 Vultr blocks both --userdata and --script-id for custom snapshot instances, so
@@ -307,7 +307,7 @@ Examples:
     log(f"Models:    {len(args.models)}")
     log(f"Instances: {args.count} ({len(non_empty)} with models assigned)")
     log(f"Official:  {'yes' if args.official_key else 'no'}")
-    log("Note: laptop must stay online ~90s while instances boot")
+    log("Note: laptop must stay online ~5m while instances boot")
     log(f"{'=' * 60}\n")
 
     created: list[tuple[str, str, str, list[str]]] = []

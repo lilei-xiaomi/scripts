@@ -132,12 +132,15 @@ done
 # ── Read optional official key ──
 OFFICIAL_KEY_FILE="/root/benchmark_official_key.txt"
 OFFICIAL_KEY_ARG=()
+OFFICIAL_KEY_SET="no"
 if [ -s "$OFFICIAL_KEY_FILE" ]; then
     OFFICIAL_KEY=$(cat "$OFFICIAL_KEY_FILE")
     OFFICIAL_KEY_ARG=(--official-key "$OFFICIAL_KEY")
+    OFFICIAL_KEY_SET="yes"
     echo "Official key loaded from $OFFICIAL_KEY_FILE"
 elif [ -n "${PINCHBENCH_OFFICIAL_KEY:-}" ]; then
     OFFICIAL_KEY_ARG=(--official-key "$PINCHBENCH_OFFICIAL_KEY")
+    OFFICIAL_KEY_SET="yes"
     echo "Official key loaded from PINCHBENCH_OFFICIAL_KEY env var"
 else
     echo "No official key found — submissions will be unofficial"
@@ -148,6 +151,7 @@ echo ""
 echo "=== Updating benchmark code ==="
 cd "$REMOTE_DIR"
 git pull || echo "WARNING: git pull failed, continuing with existing code"
+SKILL_GIT_HASH=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 
 # ── Registration ──
 echo ""
@@ -182,6 +186,8 @@ CLAIM_URL=$(echo "$REGISTRATION_OUTPUT" | grep -i "Claim URL" | grep -oE 'https?
 
 MODEL_LIST=$(printf ' • %s\n' "${MODELS[@]}")
 slack_notify "🚀 *bench-runner started* on \`$(hostname)\` ($INSTANCE_ID)
+Skill git hash: \`$SKILL_GIT_HASH\`
+Official key set: \`$OFFICIAL_KEY_SET\`
 Models (${#MODELS[@]}):
 $MODEL_LIST
 ${CLAIM_URL:+Claim URL: $CLAIM_URL}"
