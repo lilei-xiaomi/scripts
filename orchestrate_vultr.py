@@ -43,7 +43,7 @@ except ImportError:
     print("ERROR: paramiko is required. Install with: uv pip install paramiko", file=sys.stderr)
     sys.exit(1)
 
-# See docs/snapshot-versions.md 
+# See docs/snapshot-versions.md
 
 DEFAULT_SNAPSHOT = "541697a1-c04c-4f54-bfc7-8ee90ae93aed"
 
@@ -56,6 +56,17 @@ class VultrConfig:
     plan: str = "vc2-1c-2gb"
     snapshot: str = DEFAULT_SNAPSHOT
     ssh_keys: str = "a4b8f6d9-fa2e-48a4-b12d-b6162d065e52"
+
+
+def timestamp() -> str:
+    """Return local timestamp for log lines."""
+    return time.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def log(message: str, *, error: bool = False) -> None:
+    """Print a timestamped log line."""
+    stream = sys.stderr if error else sys.stdout
+    print(f"{timestamp()} {message}", file=stream, flush=True)
 
 
 def create_instance(label: str, config: VultrConfig) -> str:
@@ -87,7 +98,7 @@ def create_instance(label: str, config: VultrConfig) -> str:
     return instance_data["id"]
 
 
-def wait_for_ip(instance_id: str, timeout: int = 300, poll: int = 10) -> str:
+def wait_for_ip(instance_id: str, timeout: int = 900, poll: int = 10) -> str:
     """
     Poll until the instance has an IP address and is running.
 
@@ -113,7 +124,7 @@ def wait_for_ip(instance_id: str, timeout: int = 300, poll: int = 10) -> str:
         if status == "active" and ip != "0.0.0.0":
             # If the instance is stopped (snapshot taken while shut down), start it
             if power == "stopped" and server != "locked" and not started:
-                print(f"    Instance {instance_id} is stopped — starting it...")
+                log(f"    Instance {instance_id} is stopped — starting it...")
                 subprocess.run(
                     ["vultr", "instance", "start", instance_id],
                     capture_output=True,
@@ -187,6 +198,8 @@ def launch_instance(
     models: list[str],
     key_path: str,
     config: VultrConfig,
+    ip_timeout: int,
+    ssh_timeout: int,
     official_key: str | None = None,
 ) -> tuple[str, str, str]:
     """
@@ -194,18 +207,18 @@ def launch_instance(
 
     Returns (label, instance_id, ip).
     """
-    print(f"  [{label}] Creating instance for: {', '.join(models)}")
+    log(f"  [{label}] Creating instance for: {', '.join(models)}")
     instance_id = create_instance(label, config)
-    print(f"  [{label}] Created: {instance_id} — waiting for IP...")
+    log(f"  [{label}] Created: {instance_id} — waiting for IP...")
 
-    ip = wait_for_ip(instance_id)
-    print(f"  [{label}] Active at {ip} — waiting for SSH...")
+    ip = wait_for_ip(instance_id, timeout=ip_timeout)
+    log(f"  [{label}] Active at {ip} — waiting for SSH...")
 
-    wait_for_ssh(ip)
-    print(f"  [{label}] SSH ready — writing model assignment...")
+    wait_for_ssh(ip, timeout=ssh_timeout)
+    log(f"  [{label}] SSH ready — writing model assignment...")
 
     write_model_file(ip, models, key_path, official_key=official_key)
-    print(f"  [{label}] ✓ Models written. Instance is running headlessly.")
+    log(f"  [{label}] ✓ Models written. Instance is running headlessly.")
 
     return label, instance_id, ip
 
@@ -257,6 +270,18 @@ Examples:
     parser.add_argument("--snapshot", default=DEFAULT_SNAPSHOT)
     parser.add_argument("--ssh-keys", default="a4b8f6d9-fa2e-48a4-b12d-b6162d065e52")
     parser.add_argument(
+        "--ip-timeout",
+        type=int,
+        default=900,
+        help="Seconds to wait for instance active state and IP (default: 900)",
+    )
+    parser.add_argument(
+        "--ssh-timeout",
+        type=int,
+        default=600,
+        help="Seconds to wait for SSH port 22 (default: 600)",
+    )
+    parser.add_argument(
         "--official-key",
         type=str,
         default=os.environ.get("PINCHBENCH_OFFICIAL_KEY"),
@@ -276,14 +301,14 @@ Examples:
     buckets = distribute_models(args.models, args.count)
     non_empty = [(i, b) for i, b in enumerate(buckets) if b]
 
-    print(f"\n{'=' * 60}")
-    print(f"Vultr Benchmark Launcher")
-    print(f"{'=' * 60}")
-    print(f"Models:    {len(args.models)}")
-    print(f"Instances: {args.count} ({len(non_empty)} with models assigned)")
-    print(f"Official:  {'yes' if args.official_key else 'no'}")
-    print(f"Note: laptop must stay online ~90s while instances boot")
-    print(f"{'=' * 60}\n")
+    log(f"\n{'=' * 60}")
+    log("Vultr Benchmark Launcher")
+    log(f"{'=' * 60}")
+    log(f"Models:    {len(args.models)}")
+    log(f"Instances: {args.count} ({len(non_empty)} with models assigned)")
+    log(f"Official:  {'yes' if args.official_key else 'no'}")
+    log("Note: laptop must stay online ~90s while instances boot")
+    log(f"{'=' * 60}\n")
 
     created: list[tuple[str, str, str, list[str]]] = []
     failed: list[tuple[str, str]] = []
@@ -291,7 +316,14 @@ Examples:
     with ThreadPoolExecutor(max_workers=args.workers) as executor:
         futures = {
             executor.submit(
-                launch_instance, f"bench-{i:02d}", bucket, args.key, config, args.official_key
+                launch_instance,
+                f"bench-{i:02d}",
+                bucket,
+                args.key,
+                config,
+                args.ip_timeout,
+                args.ssh_timeout,
+                args.official_key,
             ): (
                 i,
                 bucket,
@@ -305,28 +337,28 @@ Examples:
                 lbl, instance_id, ip = future.result()
                 created.append((lbl, instance_id, ip, bucket))
             except Exception as e:
-                print(f"  ✗ {label} failed: {e}", file=sys.stderr)
+                log(f"  ✗ {label} failed: {e}", error=True)
                 failed.append((label, str(e)))
 
-    print(f"\n{'=' * 60}")
-    print(f"Summary")
-    print(f"{'=' * 60}")
-    print(f"Launched: {len(created)}/{len(non_empty)}")
+    log(f"\n{'=' * 60}")
+    log("Summary")
+    log(f"{'=' * 60}")
+    log(f"Launched: {len(created)}/{len(non_empty)}")
 
     for label, iid, ip, models in sorted(created):
-        print(f"  {label} ({iid}) @ {ip}")
+        log(f"  {label} ({iid}) @ {ip}")
         for m in models:
-            print(f"    - {m}")
+            log(f"    - {m}")
 
     if failed:
-        print(f"\nFailed ({len(failed)}):")
+        log(f"\nFailed ({len(failed)}):")
         for label, err in failed:
-            print(f"  {label}: {err}")
+            log(f"  {label}: {err}")
 
-    print(f"\nInstances are running headlessly and will self-destruct when done.")
-    print(f"Monitor: vultr instance list")
-    print(f"Logs:    ssh root@<ip> tail -f /var/log/bench-runner.log")
-    print(f"{'=' * 60}\n")
+    log("\nInstances are running headlessly and will self-destruct when done.")
+    log("Monitor: vultr instance list")
+    log("Logs:    ssh root@<ip> tail -f /var/log/bench-runner.log")
+    log(f"{'=' * 60}\n")
 
     return 0 if not failed else 1
 
