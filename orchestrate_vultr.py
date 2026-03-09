@@ -28,6 +28,10 @@ import subprocess
 import sys
 from dataclasses import dataclass
 
+# Pre-2026-03-08 snapshots
+# benchrunner 2026-03-08 v0
+# c59496ef-734f-48b6-9701-ed80729ddd35 
+#
 # From previous snapshots 
 # bench-runner 2026-03-08 v1
 # 38bffed6-4d09-4cf4-840d-0e0180eb0d89
@@ -35,8 +39,12 @@ from dataclasses import dataclass
 # Full bootstrap
 # bench-runner 2026-03-08 v2
 # 3924b3f6-d99d-4c6f-8883-43d6d847ff6b
+# 
+# Full bootstrap with fixed
+# bench-runner 2026-03-08 v3
+# 2fce88d3-b2e5-4605-8ed7-1f3865f07773
 
-DEFAULT_SNAPSHOT = "38bffed6-4d09-4cf4-840d-0e0180eb0d89"
+DEFAULT_SNAPSHOT = "2fce88d3-b2e5-4605-8ed7-1f3865f07773"
 
 
 @dataclass(frozen=True)
