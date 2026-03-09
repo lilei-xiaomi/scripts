@@ -1,0 +1,26 @@
+[Unit]
+Description=Autonomous Benchmark Runner
+# Wait for network and cloud-init before starting, so the metadata API is reachable
+# and /etc/environment (with VULTR_API_KEY) has been written.
+After=network-online.target cloud-init.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/root/run_benchmarks.sh
+# Don't restart on failure — avoids runaway billing if the script has a bug.
+Restart=no
+RemainAfterExit=yes
+# 6 hours: generous upper bound for even very slow models; safety-net 'at' job
+# fires at 5 hours regardless.
+TimeoutStartSec=21600
+# Load VULTR_API_KEY and any other env vars written to /etc/environment
+EnvironmentFile=-/etc/environment
+# Write service output to the journal (viewable with journalctl -u bench-runner)
+# The script also tees to /var/log/bench-runner.log for easy SSH inspection.
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=bench-runner
+
+[Install]
+WantedBy=multi-user.target
