@@ -18,6 +18,20 @@ METADATA="http://169.254.169.254"
 # Tee all output to log file
 exec > >(tee -a "$LOG") 2>&1
 
+# ── Slack notification helper ──
+# Reads SLACK_WEBHOOK_URL from /etc/environment (set during snapshot setup).
+# Silently no-ops if the variable is unset so the script still works without Slack.
+slack_notify() {
+    local text="$1"
+    if [ -z "${SLACK_WEBHOOK_URL:-}" ]; then
+        return 0
+    fi
+    curl -sf -X POST "$SLACK_WEBHOOK_URL" \
+        -H "Content-Type: application/json" \
+        -d "{\"text\": $(echo "$text" | jq -Rs .)}" \
+        >/dev/null 2>&1 || echo "WARNING: Slack notification failed"
+}
+
 echo "=== Benchmark runner started at $(date -u) ==="
 echo "Hostname: $(hostname)"
 
@@ -102,24 +116,47 @@ git pull || echo "WARNING: git pull failed, continuing with existing code"
 # ── Registration ──
 echo ""
 echo "=== Running registration ==="
-if ! uv run benchmark.py --register; then
+REGISTRATION_OUTPUT=$(uv run benchmark.py --register 2>&1 | tee /dev/stderr)
+REGISTER_EXIT=${PIPESTATUS[0]}
+
+if [ "$REGISTER_EXIT" -ne 0 ]; then
     echo "ERROR: Registration failed"
-    # Self-destruct even on registration failure to avoid orphaned billing
-    echo "Self-destructing after registration failure..."
+    slack_notify "❌ *bench-runner failed* on \`$(hostname)\` ($INSTANCE_ID)
+Registration failed after assigning models: ${MODELS[*]}
+Check: \`ssh root@$(curl -sf $METADATA/v1/interfaces/0/ipv4/address || echo unknown) tail -f $LOG\`"
     vultr instance delete "$INSTANCE_ID" --force || true
     exit 1
 fi
 echo "✓ Registration complete"
 
+# Extract claim URL ("Claim URL: https://...") and any leaderboard URL from registration output
+CLAIM_URL=$(echo "$REGISTRATION_OUTPUT" | grep -i "Claim URL" | grep -oE 'https?://[^ ]+' | head -1 || true)
+
+MODEL_LIST=$(printf ' • %s\n' "${MODELS[@]}")
+slack_notify "🚀 *bench-runner started* on \`$(hostname)\` ($INSTANCE_ID)
+Models (${#MODELS[@]}):
+$MODEL_LIST
+${CLAIM_URL:+Claim URL: $CLAIM_URL}"
+
 # ── Run benchmarks ──
 FAILED_MODELS=()
+RESULT_URLS=()
 
 for model in "${MODELS[@]}"; do
     echo ""
     echo "=== Benchmarking: $model ==="
     echo "Started at: $(date -u)"
 
-    if uv run benchmark.py --model "$model"; then
+    MODEL_OUTPUT=$(uv run benchmark.py --model "$model" 2>&1 | tee /dev/stderr)
+    MODEL_EXIT=${PIPESTATUS[0]}
+
+    # Extract "View at: https://..." leaderboard URL from model run output
+    MODEL_URL=$(echo "$MODEL_OUTPUT" | grep -i "View at" | grep -oE 'https?://[^ ]+' | head -1 || true)
+    if [ -n "$MODEL_URL" ]; then
+        RESULT_URLS+=("$model: $MODEL_URL")
+    fi
+
+    if [ "$MODEL_EXIT" -eq 0 ]; then
         echo "✓ $model complete at $(date -u)"
     else
         echo "✗ $model failed at $(date -u)"
@@ -138,6 +175,29 @@ if [ ${#FAILED_MODELS[@]} -gt 0 ]; then
         echo "  - $m"
     done
 fi
+
+SUCCEEDED=$(( ${#MODELS[@]} - ${#FAILED_MODELS[@]} ))
+if [ ${#FAILED_MODELS[@]} -eq 0 ]; then
+    SUMMARY_EMOJI="✅"
+    SUMMARY_STATUS="all ${#MODELS[@]} models completed"
+else
+    SUMMARY_EMOJI="⚠️"
+    FAILED_LIST=$(printf ' • %s\n' "${FAILED_MODELS[@]}")
+    SUMMARY_STATUS="$SUCCEEDED/${#MODELS[@]} succeeded. Failed:
+$FAILED_LIST"
+fi
+
+RESULTS_SECTION=""
+if [ ${#RESULT_URLS[@]} -gt 0 ]; then
+    RESULTS_SECTION="
+Results:
+$(printf ' • %s\n' "${RESULT_URLS[@]}")"
+fi
+
+slack_notify "$SUMMARY_EMOJI *bench-runner done* on \`$(hostname)\` ($INSTANCE_ID)
+$SUMMARY_STATUS
+${CLAIM_URL:+Claim URL: $CLAIM_URL}$RESULTS_SECTION
+Destroying instance now."
 
 # ── Self-destruct ──
 echo ""

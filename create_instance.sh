@@ -37,7 +37,7 @@
 #   --plan vc2-1c-2gb \
 #   --snapshot "a267c8fc-e198-4aca-b41d-57634e839a52" \
 #   --label "oc-prod-01" \
-#   --ssh-keys "a4b8f6d9-fa2e-48a4-b12d-b6162d065e52" \
+#   --ssh-keys "a4b8f6d9-fa2e-48a4-b12d-b6162d065e52"
 
 # Instances are created with --count to distribute models across them.
 # Models are assigned round-robin across instances (32 models / 10 instances = ~3-4 each).

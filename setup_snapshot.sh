@@ -115,6 +115,24 @@ else
     fi
 fi
 
+# ── Slack webhook ──
+echo ""
+if grep -q "^SLACK_WEBHOOK_URL=" /etc/environment 2>/dev/null; then
+    echo "✓ SLACK_WEBHOOK_URL already set in /etc/environment"
+else
+    echo "SLACK_WEBHOOK_URL is not set in /etc/environment."
+    echo "If set, the runner will post start (with claim URL) and completion notifications."
+    echo ""
+    read -r -p "Enter your Slack webhook URL (or press Enter to skip): " WEBHOOK_URL
+    if [ -n "$WEBHOOK_URL" ]; then
+        echo "SLACK_WEBHOOK_URL=$WEBHOOK_URL" >> /etc/environment
+        echo "✓ SLACK_WEBHOOK_URL written to /etc/environment"
+    else
+        echo "SKIPPED — notifications disabled. Add later with:"
+        echo "  echo 'SLACK_WEBHOOK_URL=https://hooks.slack.com/...' >> /etc/environment"
+    fi
+fi
+
 # ── Reset cloud-init ──
 echo ""
 echo "Resetting cloud-init state (so it runs fresh on next boot)..."
@@ -128,7 +146,7 @@ echo ""
 echo "Next steps:"
 echo "  1. Verify:  systemctl is-enabled bench-runner"
 echo "  2. Verify:  ls -la $RUNNER_DEST"
-echo "  3. Verify:  grep VULTR_API_KEY /etc/environment"
+echo "  3. Verify:  grep -E 'VULTR_API_KEY|SLACK_WEBHOOK_URL' /etc/environment"
 echo "  4. Shut down:  shutdown -h now"
 echo "  5. Take snapshot from Vultr portal/CLI"
 echo "  6. Update the snapshot ID in orchestrate_vultr.py"
