@@ -21,13 +21,11 @@ models:
   - mistral/mistral-large
   - mistralai/devstral-2512
   - moonshotai/kimi-k2.5
-  - openrouter/aurora-alpha
   - qwen/qwen-2.5-7b-instruct
   - qwen/qwen3-max-thinking
   - qwen/qwen3.5-35b-a3b
   - qwen/qwen3.5-122b-a10b
-  - sourceful/riverflow-v2-pro
   - stepfun/step-3.5-flash
   - x-ai/grok-4.1-fast
   - z-ai/glm-4.5-air
-  - z-ai/glm
+  - z-ai/glm-5
