@@ -85,7 +85,7 @@ echo "Instance ID: $INSTANCE_ID"
 # This fires even if the benchmarks hang or the runner crashes after registration.
 # Requires 'at' to be available (installed by setup_snapshot.sh).
 if command -v at &>/dev/null && [ -n "$INSTANCE_ID" ]; then
-    echo "vultr instance delete $INSTANCE_ID --force" | at now + 5 hours 2>/dev/null && \
+    echo "vultr instance delete $INSTANCE_ID" | at now + 5 hours 2>/dev/null && \
         echo "Safety-net self-destruct scheduled in 5 hours" || \
         echo "WARNING: Could not schedule safety-net self-destruct (at daemon not running?)"
 fi
@@ -170,7 +170,7 @@ if [ "$REGISTER_EXIT" -ne 0 ]; then
     slack_notify "❌ *bench-runner failed* on \`$(hostname)\` ($INSTANCE_ID)
 Registration failed after assigning models: ${MODELS[*]}
 Check: \`ssh root@$(curl -sf $METADATA/v1/interfaces/0/ipv4/address || echo unknown) tail -f $LOG\`"
-    vultr instance delete "$INSTANCE_ID" --force || true
+    vultr instance delete "$INSTANCE_ID" || true
     exit 1
 fi
 echo "✓ Registration complete"
@@ -259,9 +259,9 @@ Destroying instance now."
 # ── Self-destruct ──
 echo ""
 echo "=== Deleting instance $INSTANCE_ID ==="
-if vultr instance delete "$INSTANCE_ID" --force; then
+if vultr instance delete "$INSTANCE_ID"; then
     echo "✓ Instance deletion requested"
 else
     echo "WARNING: Self-destruct failed — instance $INSTANCE_ID may need manual cleanup"
-    echo "Run: vultr instance delete $INSTANCE_ID --force"
+    echo "Run: vultr instance delete $INSTANCE_ID"
 fi
