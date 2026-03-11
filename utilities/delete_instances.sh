@@ -46,7 +46,9 @@ if [ "$delete_stopped" = true ] && [ ${#delete_ids[@]} -gt 0 ]; then
 fi
 
 if [ "$delete_stopped" = true ]; then
-  mapfile -t delete_ids < <(
+  while IFS= read -r id; do
+    [ -n "$id" ] && delete_ids+=("$id")
+  done < <(
     vultr instance list --output json \
       | jq -r '.instances[] | select(.power_status == "stopped") | .id'
   )
